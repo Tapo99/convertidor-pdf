@@ -6,7 +6,7 @@ from io import BytesIO
 st.set_page_config(page_title="Convertidor Planilla Pro", page_icon="📊")
 
 st.title("Convertidor de Planillas Profesional")
-st.markdown("Configurado para formato de **Caja de Crédito**")
+st.markdown("CONVERTIDOR DE PLANILLA POR CENTROS DE COSTOS EN EXCEL")
 
 archivo_subido = st.file_uploader("Sube tu planilla PDF", type="pdf")
 
@@ -107,3 +107,4 @@ if archivo_subido:
             )
         else:
             st.error("No se detectaron datos de empleados. Verifica que el PDF no sea una imagen escaneada.")
+
