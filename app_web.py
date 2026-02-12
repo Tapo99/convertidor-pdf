@@ -5,7 +5,8 @@ from io import BytesIO
 
 st.set_page_config(page_title="Convertidor Inteligente", page_icon="mi_logo.png")
 
-st.title("📊 Convertidor de Planillas Profesional")
+st.image("mi_logo.png", width=200)
+st.title("Convertidor de Planillas Profesional")
 st.markdown("Este sistema convierte en excel los pdf de las planilla por centros de costos.")
 
 archivo_subido = st.file_uploader("Sube tu planilla PDF", type="pdf")
@@ -61,4 +62,5 @@ if archivo_subido:
         else:
 
             st.error("No se pudo extraer información clara del PDF.")
+
 
