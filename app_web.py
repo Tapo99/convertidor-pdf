@@ -28,8 +28,30 @@ if archivo_subido:
             if datos_completos:
                 # Aquí continúa tu lógica de limpieza...
                 st.success("¡Planilla procesada con éxito!")
+                if datos_completos:
+                # Unimos todas las páginas en un solo Excel
+                df_final = pd.concat(datos_completos, ignore_index=True)
+                
+                # Convertimos el Excel a datos que el navegador pueda descargar
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df_final.to_excel(writer, index=False, sheet_name='Planilla')
+                
+                excel_data = output.getvalue()
+
+                st.success("¡Planilla procesada con éxito!") # Esto ya lo tienes
+                
+                # ESTO ES LO QUE FALTA: El botón de descarga
+                st.download_button(
+                    label="📥 Descargar Excel",
+                    data=excel_data,
+                    file_name="planilla_convertida.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                
             else:
                 st.error("No se detectaron tablas en el PDF.")
         except Exception as e:
             st.error(f"Hubo un error: {e}")
+
 
