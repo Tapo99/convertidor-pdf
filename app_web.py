@@ -12,7 +12,7 @@ archivo_subido = st.file_uploader("Sube tu planilla PDF", type="pdf")
 
 def limpiar_monto(texto):
     if not texto: return 0.0
-    # Solo deja números, puntos y el signo menos
+    # Deja solo números, puntos y signo menos
     limpio = re.sub(r'[^\d.-]', '', str(texto).replace(',', ''))
     try:
         return float(limpio)
@@ -20,107 +20,106 @@ def limpiar_monto(texto):
         return 0.0
 
 if archivo_subido:
-    if st.button("🚀 Generar Excel Final Ordenado"):
+    if st.button("🚀 Generar Excel Ordenado"):
         try:
-            lista_empleados = []
+            filas_finales = []
             
             with pdfplumber.open(archivo_subido) as pdf:
                 for pagina in pdf.pages:
-                    # Extraemos las tablas con una configuración de "tolerancia" alta
-                    # para que no rompa las filas en pedazos
+                    # Usamos la estrategia de texto para que no se pierdan los datos pegados
                     tabla = pagina.extract_table({
                         "vertical_strategy": "text",
                         "horizontal_strategy": "text",
-                        "snap_tolerance": 4,
+                        "snap_tolerance": 5,
                     })
                     
                     if not tabla: continue
                     
                     for fila in tabla:
-                        # Unimos toda la fila para analizar si es basura
+                        # Unimos la fila para detectar si es basura o totales
                         contenido = " ".join([str(x) for x in fila if x]).upper()
                         
-                        # FILTROS: Saltamos encabezados, agencias y totales de centros de costo
-                        if any(x in contenido for x in ["AGENCIA", "TOTALES", "CUENTA", "FECHA", "CORR.", "SALARIO", "NOMBRE", "EMPLEADO"]):
+                        # FILTROS: Quitamos todo lo que no sea un empleado
+                        if any(x in contenido for x in ["AGENCIA", "TOTALES", "CUENTA", "FECHA", "CORR.", "SALARIO", "NOMBRE"]):
                             continue
                         
-                        # Limpiamos la fila de valores nulos
-                        f = [str(x).strip() if x else "" for x in fila]
-                        f = [x for x in f if x != ""] # Quitamos espacios vacíos internos
+                        # Limpiamos celdas vacías
+                        f = [str(x).strip() for x in fila if x is not None and str(x).strip() != ""]
                         
-                        # Una fila válida de empleado debe tener al menos el nombre y los montos (aprox 10+ elementos)
+                        # Una fila real debe tener el nombre y varios montos (mínimo 10 datos)
                         if len(f) < 10:
                             continue
 
-                        # ESTRATEGIA: Unimos Código + Nombre para evitar que los números se desplacen
-                        # El PDF suele traer: [COD+NOMBRE] [CORR] [DIAS] [SALARIO]...
-                        nombre_completo = f[0]
-                        correlativo = f[1]
+                        # UNIMOS CÓDIGO Y NOMBRE (Todo lo que no sea número al principio)
+                        # Buscamos dónde empiezan los números (los días laborados)
+                        idx_num = -1
+                        for i, val in enumerate(f):
+                            if re.match(r'^\d+(\.\d+)?$', val.replace(',', '')):
+                                idx_num = i
+                                break
                         
-                        # Los números empiezan usualmente después del correlativo
-                        numeros_raw = f[2:]
-                        numeros = [limpiar_monto(n) for n in numeros_raw]
+                        if idx_num != -1:
+                            nombre_y_codigo = " ".join(f[:idx_num])
+                            datos_numericos = f[idx_num:]
+                            
+                            # Limpiamos los números
+                            nums = [limpiar_monto(n) for n in datos_numericos]
+                            
+                            # Rellenamos con ceros si faltan columnas
+                            while len(nums) < 17:
+                                nums.append(0.0)
 
-                        # Aseguramos que tengamos exactamente las columnas necesarias rellenando con 0
-                        while len(numeros) < 17:
-                            numeros.append(0.0)
+                            fila_dict = {
+                                'Empleado (Código y Nombre)': nombre_y_codigo,
+                                'Días Laborados': nums[0],
+                                'Salario Mensual': nums[1],
+                                'Salario Quincenal': nums[2],
+                                'Horas Extra': nums[3],
+                                'Festivo': nums[4],
+                                'Comisiones': nums[5],
+                                'Vacaciones': nums[6],
+                                'Otros Ingresos': nums[7],
+                                'Salario Devengado': nums[8],
+                                'AFP': nums[9],
+                                'ISSS': nums[10],
+                                'Renta': nums[11],
+                                'Inst. Financieras': nums[12],
+                                'Préstamos': nums[13],
+                                'Otros Desc.': nums[14],
+                                'Total Desc.': nums[15],
+                                'Líquido a Recibir': nums[16]
+                            }
+                            filas_finales.append(fila_dict)
 
-                        fila_dict = {
-                            'Codigo y Nombre': nombre_completo,
-                            'Corr.': correlativo,
-                            'Días Laborados': numeros[0],
-                            'Salario Mensual': numeros[1],
-                            'Salario Quincenal': numeros[2],
-                            'Horas Extra': numeros[3],
-                            'Festivo': numeros[4],
-                            'Comisiones': numeros[5],
-                            'Vacaciones': numeros[6],
-                            'Otros Ingresos': numeros[7],
-                            'Salario Devengado': numeros[8],
-                            'AFP': numeros[9],
-                            'ISSS': numeros[10],
-                            'Renta': numeros[11],
-                            'Inst. Financieras': numeros[12],
-                            'Préstamos': numeros[13],
-                            'Otros Desc.': numeros[14],
-                            'Total Desc.': numeros[15],
-                            'Líquido a Recibir': numeros[16]
-                        }
-                        lista_empleados.append(fila_dict)
-
-            if lista_empleados:
-                df = pd.DataFrame(lista_empleados)
+            if filas_finales:
+                df = pd.DataFrame(filas_finales)
                 
-                # TOTALIZACIÓN ÚNICA (Solo al final de todo el archivo)
-                cols_num = df.columns[2:]
-                suma_total = df[cols_num].sum()
+                # SUMA TOTAL AL FINAL
+                cols_n = df.columns[1:]
+                totales = df[cols_n].sum()
+                fila_tot = {c: "" for c in df.columns}
+                fila_tot['Empleado (Código y Nombre)'] = "TOTAL GENERAL PLANILLA"
+                for c in cols_n:
+                    fila_tot[c] = totales[c]
                 
-                fila_total = {c: "" for c in df.columns}
-                fila_total['Codigo y Nombre'] = "TOTAL GENERAL DE PLANILLA"
-                for c in cols_num:
-                    fila_total[c] = suma_total[c]
-                
-                df = pd.concat([df, pd.DataFrame([fila_total])], ignore_index=True)
+                df = pd.concat([df, pd.DataFrame([fila_tot])], ignore_index=True)
 
-                # FORMATO EXCEL
+                # EXPORTAR A EXCEL
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='Planilla')
+                    df.to_excel(writer, index=False, sheet_name='Planilla_Limpia')
                     wb = writer.book
-                    ws = writer.sheets['Planilla']
+                    ws = writer.sheets['Planilla_Limpia']
                     
-                    # Estilos
-                    fmt_moneda = wb.add_format({'num_format': '#,##0.00', 'border': 1})
+                    fmt_contable = wb.add_format({'num_format': '#,##0.00', 'border': 1})
                     fmt_texto = wb.add_format({'border': 1})
                     
-                    # Anchos de columna
-                    ws.set_column(0, 0, 50, fmt_texto) # Nombre y Código
-                    ws.set_column(1, 1, 10, fmt_texto) # Corr
-                    ws.set_column(2, 18, 15, fmt_moneda) # Números
+                    ws.set_column(0, 0, 60, fmt_texto) # Columna de Nombre mucho más ancha
+                    ws.set_column(1, 18, 15, fmt_contable) # Columnas de dinero alineadas
 
-                st.success("¡Excel generado! Se eliminaron los totales por agencia y se alinearon las columnas.")
-                st.download_button("📥 Descargar Planilla Limpia", output.getvalue(), "planilla_final.xlsx")
+                st.success("¡Excel generado! Sin correlativos y con nombres unificados para mayor orden.")
+                st.download_button("📥 Descargar Excel Final", output.getvalue(), "planilla_ordenada.xlsx")
             else:
-                st.error("No se encontraron filas de empleados. Verifica el formato del PDF.")
+                st.error("No se detectaron datos. Revisa que el PDF no sea una imagen.")
         except Exception as e:
             st.error(f"Error: {e}")
